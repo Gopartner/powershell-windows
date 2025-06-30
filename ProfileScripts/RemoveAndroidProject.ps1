@@ -9,57 +9,85 @@
         return
     }
 
-    $projects = Get-ChildItem -Path $ProjectRoot -Directory | Select-Object -ExpandProperty Name
-    if (-not $projects.Count) {
-        Write-Host "📂 Tidak ada folder project di: $ProjectRoot" -ForegroundColor Yellow
-        return
+    # ---------- Util ----------
+    function Hard-Delete ([string]$path) {
+        try {
+            Remove-Item -Path $path -Recurse -Force -ErrorAction Stop
+            Write-Host "✅ Terhapus permanen: $path" -ForegroundColor Green
+        } catch {
+            Write-Host "❌ Gagal hard delete: $path" -ForegroundColor Red
+        }
     }
 
-    $selectedIndex = 0
+    function Bin-Delete ([string]$path) {
+        try {
+            Add-Type -AssemblyName Microsoft.VisualBasic
+            [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($path,'SendToRecycleBin')
+            Write-Host "🗑️  Ke Recycle Bin: $path" -ForegroundColor Green
+        } catch {
+            Write-Host "❌ Gagal ke Recycle Bin: $path" -ForegroundColor Red
+        }
+    }
 
-    function Show-ProjectMenu {
+    # ---------- Menu 2 : Konfirmasi ----------
+    function Confirm-Menu ($paths) {
         do {
-            Clear-Host
-            Write-Host "📁 Project Directory: $ProjectRoot`n"
-            Write-Host "Gunakan ↑ ↓ untuk memilih project, Enter untuk hapus, Esc untuk batal.`n"
+            Write-Host "`nPilih mode penghapusan:"
+            Write-Host "  [A] Hapus permanen"
+            Write-Host "  [B] Recycle Bin"
+            Write-Host "  [C] Kembali"
+            $opt = Read-Host "Pilihan (A/B/C)"
 
-            for ($i = 0; $i -lt $projects.Count; $i++) {
-                if ($i -eq $selectedIndex) {
-                    Write-Host "➤ $($projects[$i])" -ForegroundColor Cyan
-                } else {
-                    Write-Host "  $($projects[$i])"
-                }
-            }
-
-            $key = [Console]::ReadKey($true).Key
-            switch ($key) {
-                'UpArrow'   { $selectedIndex = ($selectedIndex - 1 + $projects.Count) % $projects.Count }
-                'DownArrow' { $selectedIndex = ($selectedIndex + 1) % $projects.Count }
-                'Enter'     { Confirm-Deletion; return }
-                'Escape'    { Write-Host "`n❎ Dibatalkan." -ForegroundColor Yellow; return }
+            switch -Regex ($opt) {
+                '^[Aa]$' { $paths | ForEach-Object { Hard-Delete $_ }; return $true }
+                '^[Bb]$' { $paths | ForEach-Object { Bin-Delete  $_ }; return $true }
+                '^[Cc]$' { return $false }
             }
         } while ($true)
     }
 
-    function Confirm-Deletion {
-        $projectName = $projects[$selectedIndex]
-        $targetPath  = Join-Path $ProjectRoot $projectName
+    # ---------- Menu 1 : List project ----------
+    function Project-Menu {
+        $projects = Get-ChildItem -Path $ProjectRoot -Directory | Select-Object -ExpandProperty Name
+        if (-not $projects) {
+            Write-Host "📂 Tidak ada folder project di: $ProjectRoot" -ForegroundColor Yellow
+            return
+        }
 
-        Write-Host "`n⚠️  Kamu memilih: $projectName"
-        $ok = Read-Host "Apakah yakin hapus? (Y/N)"
-        if ($ok -match '^[Yy]$') {
-            try {
-                Remove-Item -Path $targetPath -Recurse -Force -ErrorAction Stop
-                Write-Host "`n✅ Terhapus: $targetPath" -ForegroundColor Green
-            } catch {
-                Write-Host "`n❌ Gagal: $_" -ForegroundColor Red
+        $items = $projects + '[SEMUA PROJECT]'
+        $index = 0
+
+        while ($true) {
+            Clear-Host
+            Write-Host "📁 Project Directory: $ProjectRoot`n"
+            Write-Host "↑ ↓ = navigasi   Enter = pilih   Esc = keluar`n"
+
+            for ($i = 0; $i -lt $items.Count; $i++) {
+                if ($i -eq $index) {
+                    Write-Host "➤ $($items[$i])" -ForegroundColor Cyan
+                } else {
+                    Write-Host "  $($items[$i])"
+                }
             }
-        } else {
-            Write-Host "`n⏭️  Batal hapus." -ForegroundColor Yellow
+
+            switch ([Console]::ReadKey($true).Key) {
+                'UpArrow'   { $index = ($index - 1 + $items.Count) % $items.Count }
+                'DownArrow' { $index = ($index + 1) % $items.Count }
+                'Escape'    { Write-Host "`nKeluar."; return }
+                'Enter'     {
+                    if ($items[$index] -eq '[SEMUA PROJECT]') {
+                        $all = Get-ChildItem -Path $ProjectRoot -Directory | Select-Object -ExpandProperty FullName
+                        $go  = Confirm-Menu $all
+                    } else {
+                        $go  = Confirm-Menu @(Join-Path $ProjectRoot $items[$index])
+                    }
+                    if ($go) { Pause "Tekan tombol apa saja…" }
+                }
+            }
         }
     }
 
-    Show-ProjectMenu
+    Project-Menu
 }
 
 Set-Alias rm-android Remove-AndroidProject
