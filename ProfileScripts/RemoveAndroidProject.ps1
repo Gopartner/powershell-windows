@@ -1,71 +1,65 @@
-<#
-.SYNOPSIS
-    Pilih & hapus folder project Android di D:\android\projects secara interaktif.
-
-.DESCRIPTION
-    - Tampilkan semua sub‑folder project di D:\android\projects
-    - Navigasi ↑ ↓, Enter = hapus project terpilih, Esc = batal
-    - Tersedia prompt konfirmasi sebelum penghapusan
-#>
-
-function Remove-AndroidProject {
+﻿function Remove-AndroidProject {
+    [CmdletBinding()]
     param (
-        [string]$ProjectRoot = 'D:\android\projects'
+        [string]$ProjectRoot = "D:\android\projects"
     )
 
     if (-not (Test-Path $ProjectRoot)) {
-        Write-Host "Folder $ProjectRoot tidak ditemukan." -ForegroundColor Red
+        Write-Host "❌ Folder root tidak ditemukan: $ProjectRoot" -ForegroundColor Red
         return
     }
 
-    $folders = Get-ChildItem -Path $ProjectRoot -Directory | Select-Object -ExpandProperty Name
-    if (-not $folders) {
-        Write-Host "Tidak ada sub‑folder project di $ProjectRoot." -ForegroundColor Yellow
+    $projects = Get-ChildItem -Path $ProjectRoot -Directory | Select-Object -ExpandProperty Name
+    if (-not $projects.Count) {
+        Write-Host "📂 Tidak ada folder project di: $ProjectRoot" -ForegroundColor Yellow
         return
     }
 
-    # --- Logic menu sederhana ---
-    $index = 0
-    Show-Menu
+    $selectedIndex = 0
 
-    function Show-Menu {
-        Clear-Host
-        Write-Host "Pilih project yang ingin dihapus (Esc = batal):`n"
-        for ($i = 0; $i -lt $folders.Count; $i++) {
-            if ($i -eq $index) {
-                Write-Host "> $($folders[$i])" -ForegroundColor Cyan
-            }
-            else {
-                Write-Host "  $($folders[$i])"
-            }
-        }
+    function Show-ProjectMenu {
+        do {
+            Clear-Host
+            Write-Host "📁 Project Directory: $ProjectRoot`n"
+            Write-Host "Gunakan ↑ ↓ untuk memilih project, Enter untuk hapus, Esc untuk batal.`n"
 
-        switch ([System.Console]::ReadKey($true).Key) {
-            'UpArrow' { $index = ($index - 1) % $folders.Count; Show-Menu }
-            'DownArrow' { $index = ($index + 1) % $folders.Count; Show-Menu }
-            'Enter' { Confirm-Delete }
-            'Escape' { Clear-Host; Write-Host "Dibatalkan."; return }
-            default { Show-Menu }
-        }
+            for ($i = 0; $i -lt $projects.Count; $i++) {
+                if ($i -eq $selectedIndex) {
+                    Write-Host "➤ $($projects[$i])" -ForegroundColor Cyan
+                } else {
+                    Write-Host "  $($projects[$i])"
+                }
+            }
+
+            $key = [Console]::ReadKey($true).Key
+            switch ($key) {
+                'UpArrow'   { $selectedIndex = ($selectedIndex - 1 + $projects.Count) % $projects.Count }
+                'DownArrow' { $selectedIndex = ($selectedIndex + 1) % $projects.Count }
+                'Enter'     { Confirm-Deletion; return }
+                'Escape'    { Write-Host "`n❎ Dibatalkan." -ForegroundColor Yellow; return }
+            }
+        } while ($true)
     }
 
-    function Confirm-Delete {
-        $choice = Read-Host "Hapus folder '$($folders[$index])'? (Y/N)"
-        if ($choice -match '^[Yy]$') {
-            $targetPath = Join-Path $ProjectRoot $folders[$index]
+    function Confirm-Deletion {
+        $projectName = $projects[$selectedIndex]
+        $targetPath  = Join-Path $ProjectRoot $projectName
+
+        Write-Host "`n⚠️  Kamu memilih: $projectName"
+        $ok = Read-Host "Apakah yakin hapus? (Y/N)"
+        if ($ok -match '^[Yy]$') {
             try {
-                Remove-Item -Path $targetPath -Recurse -Force
-                Write-Host "✅  Project terhapus:`n$targetPath" -ForegroundColor Green
+                Remove-Item -Path $targetPath -Recurse -Force -ErrorAction Stop
+                Write-Host "`n✅ Terhapus: $targetPath" -ForegroundColor Green
+            } catch {
+                Write-Host "`n❌ Gagal: $_" -ForegroundColor Red
             }
-            catch {
-                Write-Host "⚠️  Gagal menghapus: $_" -ForegroundColor Red
-            }
-        }
-        else {
-            Write-Host "Penghapusan dibatalkan."
+        } else {
+            Write-Host "`n⏭️  Batal hapus." -ForegroundColor Yellow
         }
     }
+
+    Show-ProjectMenu
 }
 
-# OPTIONAL: alias pendek
 Set-Alias rm-android Remove-AndroidProject
